@@ -1,22 +1,25 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Set SSL certificate path (fixes SSL issues)
+ENV SSL_CERT_FILE=/usr/local/lib/python3.10/site-packages/certifi/cacert.pem
+
+# Copy and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt certifi
 
 # Copy the rest of the application
 COPY . .
 
-# Create data directory
-RUN mkdir -p /data
+# Create and set permissions for data directory
+RUN mkdir -p /data && chmod -R 777 /data
 
 # Expose port
 EXPOSE 8000
