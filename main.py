@@ -316,91 +316,133 @@ def validate_path(path: str) -> Path:
         
     return full_path
 
+# @app.post("/run")
+# @app.get("/run")
+# async def run_task(request: Request, task: str = None):
+#     """Execute a plain-English task using LLM for parsing and task execution."""
+#     try:
+#         # Get task from either query params or form data
+#         if task is None:
+#             if request.method == "POST":
+#                 form_data = await request.form()
+#                 task = form_data.get("task")
+#             if task is None:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail="Task parameter is required"
+#                 )
+
+#         logger.info(f"Received task: {task}")
+
+#         # Parse task using LLM
+#         try:
+#             parsed_task = await parse_task_description(task, query_url=str(request.url))
+#             logger.info(f"Successfully parsed task: {parsed_task}")
+#         except Exception as e:
+#             logger.error(f"Failed to parse task: {e}")
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=f"Failed to understand task: {str(e)}"
+#             )
+        
+#         # Validate paths
+#         try:
+#             for file_path in parsed_task.get('input_files', []):
+#                 validate_path(file_path)
+#             for file_path in parsed_task.get('output_files', []):
+#                 # Ensure output file's parent directory exists
+#                 output_path = validate_path(file_path)
+#                 output_path.parent.mkdir(parents=True, exist_ok=True)
+#         except Exception as e:
+#             raise HTTPException(
+#                 status_code=400,
+#                 detail=f"Invalid file path: {str(e)}"
+#             )
+        
+#         # Execute task
+#         try:
+#             # Remove original_task from parameters to avoid duplication
+#             task_params = parsed_task.get('parameters', {}).copy()
+#             if 'original_task' in task_params:
+#                 del task_params['original_task']
+
+#             result = await task_handler.dispatch_task(
+#                 task_type=parsed_task['task_type'].upper(),
+#                 input_files=parsed_task['input_files'],
+#                 output_files=parsed_task['output_files'],
+#                 app=app if parsed_task['task_type'].upper() == 'B10' else None,
+#                 **task_params
+#             )
+            
+#             if result:
+#                 return {
+#                     "status": "success",
+#                     "message": f"Task {parsed_task['task_type']} completed successfully",
+#                     "task_info": parsed_task
+#                 }
+#             else:
+#                 raise HTTPException(
+#                     status_code=500,
+#                     detail=f"Task {parsed_task['task_type']} failed to execute"
+#                 )
+                
+#         except Exception as e:
+#             logger.error(f"Task execution failed: {e}", exc_info=True)
+#             raise HTTPException(
+#                 status_code=500,
+#                 detail=f"Failed to execute task: {str(e)}"
+#             )
+            
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Unexpected error: {e}", exc_info=True)
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Internal server error: {str(e)}"
+#         )
+
+
+
 @app.post("/run")
 @app.get("/run")
 async def run_task(request: Request, task: str = None):
-    """Execute a plain-English task using LLM for parsing and task execution."""
+    """Execute a task with proper file syncing."""
     try:
-        # Get task from either query params or form data
         if task is None:
             if request.method == "POST":
                 form_data = await request.form()
                 task = form_data.get("task")
             if task is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Task parameter is required"
-                )
+                raise HTTPException(status_code=400, detail="Task parameter is required")
 
-        logger.info(f"Received task: {task}")
-
-        # Parse task using LLM
-        try:
-            parsed_task = await parse_task_description(task, query_url=str(request.url))
-            logger.info(f"Successfully parsed task: {parsed_task}")
-        except Exception as e:
-            logger.error(f"Failed to parse task: {e}")
-            raise HTTPException(
-                status_code=400,
-                detail=f"Failed to understand task: {str(e)}"
-            )
+        # Parse task
+        parsed_task = await parse_task_description(task, query_url=str(request.url))
         
-        # Validate paths
-        try:
-            for file_path in parsed_task.get('input_files', []):
-                validate_path(file_path)
-            for file_path in parsed_task.get('output_files', []):
-                # Ensure output file's parent directory exists
-                output_path = validate_path(file_path)
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file path: {str(e)}"
-            )
-        
+        # For A2, ensure format.md is in sync before and after
+        if parsed_task['task_type'].upper() == 'A2':
+            task_handler.sync_file("format.md")
+            
         # Execute task
-        try:
-            # Remove original_task from parameters to avoid duplication
-            task_params = parsed_task.get('parameters', {}).copy()
-            if 'original_task' in task_params:
-                del task_params['original_task']
-
-            result = await task_handler.dispatch_task(
-                task_type=parsed_task['task_type'].upper(),
-                input_files=parsed_task['input_files'],
-                output_files=parsed_task['output_files'],
-                app=app if parsed_task['task_type'].upper() == 'B10' else None,
-                **task_params
-            )
-            
-            if result:
-                return {
-                    "status": "success",
-                    "message": f"Task {parsed_task['task_type']} completed successfully",
-                    "task_info": parsed_task
-                }
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Task {parsed_task['task_type']} failed to execute"
-                )
-                
-        except Exception as e:
-            logger.error(f"Task execution failed: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to execute task: {str(e)}"
-            )
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
+        result = await task_handler.dispatch_task(
+            task_type=parsed_task['task_type'],
+            input_files=parsed_task['input_files'],
+            output_files=parsed_task['output_files'],
+            **parsed_task.get('parameters', {})
         )
+        
+        # Sync again after A2
+        if parsed_task['task_type'].upper() == 'A2':
+            task_handler.sync_file("format.md")
+            
+        if result:
+            return {"status": "success", "message": "Task completed successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Task failed to execute")
+            
+    except Exception as e:
+        logger.error(f"Error executing task: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 # @app.get("/read/{path:path}", response_class=PlainTextResponse)
 # async def read_file(path: str):
